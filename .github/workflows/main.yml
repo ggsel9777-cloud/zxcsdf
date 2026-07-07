@@ -1,30 +1,15 @@
-name: Build CS2 Menu DLL
+name: Build DLL
 on: [push]
 jobs:
   build:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
-
-    - name: Download ImGui Graphics Library
-      run: |
-        git clone https://github.com imgui_source
-        mkdir imgui_include
-        copy imgui_source\*.h imgui_include\
-        copy imgui_source\*.cpp .
-        copy imgui_source\backends\imgui_impl_win32.h imgui_include\
-        copy imgui_source\backends\imgui_impl_win32.cpp .
-        copy imgui_source\backends\imgui_impl_dx12.h imgui_include\
-        copy imgui_source\backends\imgui_impl_dx12.cpp .
-
-    - name: Compile Full Skin Changer DLL
-      run: |
-        cl.exe /LD /I./imgui_include main.cpp imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp imgui_impl_win32.cpp imgui_impl_dx12.cpp /Fe:changer.dll user32.lib d3d12.lib dxgi.lib
-
-    - name: Upload Finished DLL
+    - name: Compile DLL
+      run: cl.exe /LD main.cpp /Fe:changer.dll user32.lib
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: my-compiled-dll
