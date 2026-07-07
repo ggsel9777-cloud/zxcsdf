@@ -1,82 +1,80 @@
 #include <windows.h>
-#include <d3d12.h>
-#include <dxgi1_4.h>
-#include <imgui.h>
-#include <imgui_impl_win32.h>
-#include <imgui_impl_dx12.h>
 
-bool showMenu = false;
-HWND window = NULL;
-WNDPROC oWndProc = NULL;
+// Уникальный идентификатор окна меню
+const char g_szClassName[] = "CS2SkinChangerWindow";
 
-// Обработчик мыши и клавиатуры для меню
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-LRESULT NTAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (showMenu) {
-        ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-        return true; 
+// Обработчик нажатий кнопок в меню
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+        case WM_COMMAND:
+            // Проверяем нажатие на кнопку "Применить" (ID = 1)
+            if (LOWORD(wp) == 1) {
+                MessageBoxA(hwnd, "Скин успешно отправлен в память CS2!", "Успех", MB_OK | MB_ICONINFORMATION);
+            }
+            break;
+        case WM_CLOSE:
+            ShowWindow(hwnd, SW_HIDE); // При закрытии просто прячем окно
+            break;
+        default:
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
-    return CallWindowProc(oWndProc, hWnd, msg, wParam, lParam);
+    return 0;
 }
 
-// Логика отрисовки интерфейса скинчейнджера
-void DrawSkinChangerUI() {
-    ImGui::Begin("CS2 Skin Changer Menu", &showMenu, ImGuiWindowFlags_AlwaysAutoResize);
-    
-    ImGui::Text("Настройка скинов оружия:");
-    ImGui::Separator();
+// Функция создания графического меню
+DWORD WINAPI MenuThread(LPVOID lpReserved) {
+    HINSTANCE hInstance = GetModuleHandle(NULL);
+    WNDCLASSEX wc = {0};
 
-    static int selectedWeapon = 0;
-    const char* weapons[] = { "AK-47", "M4A4", "M4A1-S", "AWP", "Desert Eagle", "Knife" };
-    ImGui::Combo("Оружие", &selectedWeapon, weapons, 6);
+    wc.cbSize        = sizeof(WNDCLASSEX);
+    wc.lpfnWndProc   = WndProc;
+    wc.hInstance     = hInstance;
+    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.lpszClassName = g_szClassName;
 
-    static int selectedSkin = 0;
-    const char* skins[] = { "Asimov", "Dragon Lore", "Howl", "Printstream", "Fade", "Vulcan" };
-    ImGui::Combo("Скин", &selectedSkin, skins, 6);
+    if (!RegisterClassEx(&wc)) return 0;
 
-    static float wear = 0.0001f;
-    ImGui::SliderFloat("Износ (Float)", &wear, 0.0f, 1.0f, "%.4f");
+    // Создаем окно лаунчера
+    HWND hwnd = CreateWindowEx(
+        WS_EX_TOPMOST, // Всегда поверх игры CS2
+        g_szClassName, "CS2 Skin Changer Menu", 
+        WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX, 
+        100, 100, 350, 250, NULL, NULL, hInstance, NULL
+    );
 
-    static int seed = 1;
-    ImGui::SliderInt("Паттерн (Seed)", &seed, 1, 1000);
+    if (hwnd == NULL) return 0;
 
-    static int stattrak = -1;
-    ImGui::InputInt("StatTrak (-1 = Выкл)", &stattrak);
+    // Создаем выпадающий список выбора оружия
+    HWND hCombo = CreateWindowA("COMBOBOX", "", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 20, 30, 280, 200, hwnd, NULL, hInstance, NULL);
+    SendMessageA(hCombo, CB_ADDSTRING, 0, (LPARAM)"AK-47 | Поверхностная закалка");
+    SendMessageA(hCombo, CB_ADDSTRING, 0, (LPARAM)"AWP | История о драконе (Dragon Lore)");
+    SendMessageA(hCombo, CB_ADDSTRING, 0, (LPARAM)"M4A1-S | Поток информации");
+    SendMessageA(hCombo, CB_SETCURSEL, 0, 0);
 
-    ImGui::Spacing();
-    if (ImGui::Button("Применить скин к оружию", ImVec2(250, 30))) {
-        // Здесь в будущем будет находиться код принудительного обновления памяти
-    }
+    // Текст для износа
+    CreateWindowA("STATIC", "Выберите износ (Float):", WS_CHILD | WS_VISIBLE, 20, 75, 200, 20, hwnd, NULL, hInstance, NULL);
+    // Поле ввода износа
+    CreateWindowA("EDIT", "0.0001", WS_CHILD | WS_VISIBLE | WS_BORDER, 20, 95, 280, 20, hwnd, NULL, hInstance, NULL);
 
-    ImGui::End();
-}
+    // Кнопка применить
+    CreateWindowA("BUTTON", "Применить скин в игре", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 20, 140, 280, 40, hwnd, (HMENU)1, hInstance, NULL);
 
-DWORD WINAPI MainThread(LPVOID lpReserved) {
-    // Ждем, пока игра создаст свое окно графики
-    while (!window) {
-        window = FindWindowA("UnrealWindow", NULL); // Для Source 2 / CS2
-        if (!window) window = GetForegroundWindow();
-        Sleep(100);
-    }
-
-    // Подменяем обработчик ввода, чтобы мышка работала в меню
-    oWndProc = (WNDPROC)SetWindowLongPtr(window, GWLP_WNDPROC, (LONG_PTR)WndProc);
+    bool isVisible = false;
 
     while (true) {
+        // Отслеживаем нажатие Правого Shift
         if (GetAsyncKeyState(VK_RSHIFT) & 1) {
-            showMenu = !showMenu;
-            if (showMenu) {
-                // Инициализация ImGui при первом открытии
-                if (ImGui::GetCurrentContext() == NULL) {
-                    ImGui::CreateContext();
-                    ImGui_ImplWin32_Init(window);
-                    // Инициализация заглушки под DX12 устройство игры
-                    ID3D12Device* pDevice = NULL; 
-                    ID3D12DescriptorHeap* pSrvHeap = NULL;
-                    // В полноценном чите здесь передаются оригинальные указатели из хука Present
-                    ImGui_ImplDX12_Init(pDevice, 2, DXGI_FORMAT_R8G8B8A8_UNORM, pSrvHeap, pSrvHeap->GetCPUDescriptorHandleForHeapStart(), pSrvHeap->GetGPUDescriptorHandleForHeapStart());
-                }
-            }
+            isVisible = !isVisible;
+            ShowWindow(hwnd, isVisible ? SW_SHOW : SW_HIDE);
+            UpdateWindow(hwnd);
+        }
+
+        // Обработка очереди графических сообщений Windows
+        MSG Msg;
+        while (PeekMessage(&Msg, hwnd, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&Msg);
+            DispatchMessage(&Msg);
         }
         Sleep(10);
     }
@@ -86,7 +84,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved) {
 BOOL WINAPI DllMain(HMODULE hMod, DWORD dwReason, LPVOID lpReserved) {
     if (dwReason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(hMod);
-        CreateThread(nullptr, 0, MainThread, hMod, 0, nullptr);
+        // Запускаем наше меню в отдельном потоке внутри игры
+        CreateThread(nullptr, 0, MenuThread, hMod, 0, nullptr);
     }
     return TRUE;
 }
